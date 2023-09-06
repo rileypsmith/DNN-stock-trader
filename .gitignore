@@ -1,2 +1,9 @@
 # Where data is kept
 data
+
+# Outputs
+*.csv
+*.gif
+
+# Trained models
+trained_lstm
