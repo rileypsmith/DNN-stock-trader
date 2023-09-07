@@ -17,28 +17,8 @@ import pandas as pd
 from gym import Env
 from gym.spaces import Box, Discrete
 
-import agents
-import utils
-from count_remaining_words import count_possible_words
-
-# Read words from file
-with open('words.txt', 'r') as fp:
-    WORDS = [l.strip() for l in fp.readlines()]
-
-def get_word(idx=None):
-    if idx is None:
-        idx = np.random.randint(low=0, high=len(WORDS))
-    return WORDS[idx]
-
-def plot_tile(letter, color=0):
-    tile = np.ones((28, 28, 3), dtype=np.uint8)
-    tile[:] = COLORS[color]
-    cv2.putText(tile, letter, (4, 24), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0))
-    return tile
-
-COLORS = [(128, 128, 128), (252, 219, 3), (0, 186, 68)]
-
-REWARD = 10
+# Use some stocks as only validation data
+VALIDATION_STOCKS = ['AAPL', 'BA', 'IBM']
 
 class StockTradingEnv(Env):
     def __init__(self, **kwargs):
@@ -72,7 +52,7 @@ class StockTradingEnv(Env):
         # Track portfolio value (for giving rewards)
         self.portfolio_value = 10
 
-    def _sample_history(self):
+    def _sample_history(self, val=False):
         """
         Choose a random stock from available data and random starting point in 
         time. Use this as the history for this environment.
@@ -85,23 +65,38 @@ class StockTradingEnv(Env):
             as a trader of the stock over a 30 day period. Shape of data should
             be (60, 2) -- 60 days by two fields (closing price and volume).
         """
-        # List available stock CSV files
-        available_files = sorted(list(Path('data').glob('*.csv')))
-        random.shuffle(available_files)
-        # Load the first one
-        data = pd.read_csv(str(available_files[0]), usecols=['Adj Close', 'Volumne'])
+        # If requesting validation, get one of the validation-only stocks
+        if val:
+            idx = np.random.randint(0, 3)
+            ticker = VALIDATION_STOCKS[idx]
+            csvfile = str(Path('data', f'{ticker}.csv'))
+        else:
+            # List available stock CSV files
+            available_files = sorted(list(Path('data').glob('*.csv')))
+            random.shuffle(available_files)
+            csvfile = str(available_files[0])
+        # Load the data
+        data = pd.read_csv(csvfile, usecols=['Adj Close', 'Volumne'])
         # Choose random starting point
         first_day = np.random.randint(0, data.shape[0] - 60)  
         return data.iloc[first_day: first_day + 60].to_numpy()
 
     def _preprocess(self, history):
-        """Apply simple min/max preprocesing to stock data"""
-        # Get min/max only from first 30 day period
-        initial_data = history[:30]
-        self.h_min = initial_data.min(axis=0)
-        self.h_max = initial_data.max(axis=0)
-        self.h_ptp = self.h_max - self.h_min
-        return (history - self.h_min[np.newaxis,:]) / self.h_ptp[np.newaxis, :]
+        """
+        Apply simple preprocessing so that each sequence is like an index.
+        That is, the 30th day is the reference ($1) and every other day is
+        given relative to this price.
+        """
+        # Get reference data
+        ref_data = history[29][np.newaxis, :]
+        return history / ref_data
+
+        # # Get min/max only from first 30 day period
+        # initial_data = history[:30]
+        # self.h_min = initial_data.min(axis=0)
+        # self.h_max = initial_data.max(axis=0)
+        # self.h_ptp = self.h_max - self.h_min
+        # return (history - self.h_min[np.newaxis,:]) / self.h_ptp[np.newaxis, :]
 
     def draw_on_canvas(self, guess):
         """Update the canvas to show the latest guess"""
@@ -184,6 +179,10 @@ class StockTradingEnv(Env):
         # Check to see if done
         terminated = self.day > 30
 
+        # Environment will return a hard-coded "False" to be consistent with
+        # changes to OpenAI Gym API, which now has separate indicator for
+        # truncated or terminated. But, I make no distinction, therefore in my
+        # case, truncated is always "False"
         return self.state, reward, terminated, False, {}
 
     def render(self):
@@ -191,14 +190,15 @@ class StockTradingEnv(Env):
         plt.show()
         time.sleep(2)
 
-    def reset(self):
+    def reset(self, val=False):
         # Reset state and holdings
-        self.stock_history = self._preprocess(self._sample_history())
+        self.stock_history = self._preprocess(self._sample_history(val))
         self.state = self.stock_history[:30]
         self.day = 0
         self.money = 10
         self.shares_owned = 0
         self.portfolio_value = 10
+        return self.state, {}
 #
 # env = WordleEnv()
 # env.state

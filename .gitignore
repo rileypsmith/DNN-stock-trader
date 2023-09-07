@@ -4,6 +4,7 @@ data
 # Outputs
 *.csv
 *.gif
+lstm_trading_evaluation
 
 # Trained models
 trained_lstm

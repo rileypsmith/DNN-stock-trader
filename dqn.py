@@ -11,10 +11,13 @@ import random
 import warnings
 
 import gym
+import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 from tensorflow.keras import layers, Model, Sequential
+
+from env import StockTradingEnv
 
 warnings.simplefilter('ignore')
 
@@ -91,23 +94,19 @@ class Agent():
         # Run SGD on the batch you just formed
         self.q_net.fit(states, truth, epochs=1)
 
-    def run_episode(self, env, return_frames=False):
+    def run_episode(self, env, return_values=False):
         # Start by resetting the environment
-        state, _ = env.reset()
+        state, _ = env.reset(val=True)
         done = False
         total_reward = 0
-        frames = []
+        value_over_time = [env.portfolio_value]
         while not done:
             action = self.policy(state, train=False)
-            state, reward, terminated, truncated, info = env.step(action)
+            state, reward, done, _, info = env.step(action)
             total_reward += reward
-            done = terminated or truncated
-            if truncated:
-                print('TRUNCATED')
-            if return_frames:
-                frames.append(env.render())
-        if return_frames:
-            return frames
+            value_over_time.append(env.portfolio_value)
+        if return_values:
+            return value_over_time
         return total_reward
 
     def evaluate(self, env):
@@ -116,12 +115,30 @@ class Agent():
         for _ in range(100):
             total_reward += self.run_episode(env)
         return total_reward / 100
-    
-    def save_gif(self, env, episode):
-        # Get frames
-        frames = self.run_episode(env, return_frames=True)
-        imageio.mimsave(f'episode{episode:03}.gif', frames)
 
+    def plot_eval(self, env, saveas=None):
+        """"Make a plot of portfolio value over time."""
+        # Run 100 episodes and store portfolio value each time
+        values_over_time = []
+        for _ in range(100):
+            values_over_time.append(self.run_episode(env))
+        # Compute average portfolio value over time
+        values_over_time = np.array(values_over_time)
+        av_vals = values_over_time.mean(axis=0)
+        confidence_interval = values_over_time.std(axis=0) * 1.96
+        # Plot it
+        fig, ax = plt.subplots()
+        x = np.arange(av_vals.size)
+        ax.plot(x, av_vals, color='black', linesytle='--', label='Average portfolio value')
+        ax.fill_between(x, av_vals - confidence_interval, av_vals + confidence_interval,
+                        color='orange', alpha=0.2, label='95% confidence interval')
+        ax.legend()
+        if saveas is not None:
+            plt.savefig(saveas)
+            plt.close()
+        else:
+            plt.show()
+    
     def update(self):
         """Copy the weights of the Q network over to the target network"""
         self.t_net.set_weights(self.q_net.get_weights())
@@ -175,7 +192,7 @@ class CustomCSVWriter():
     def __init__(self, csv_file):
         # Write headers to file
         self.csv_file = csv_file
-        headers = ['Epoch', 'val_steps']
+        headers = ['Epoch', 'av_reward']
         with open(csv_file, 'w+', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(headers)
@@ -190,7 +207,7 @@ def train(num_epochs=20):
     # Setup replay buffer
     replay_buffer = ReplayBuffer()
     # Build environment
-    env = gym.make('CartPole-v0', render_mode='rgb_array')
+    env = StockTradingEnv()
     log = CustomCSVWriter('test.csv')
     # Run a bunch of epochs of training
     for epoch in range(num_epochs):
