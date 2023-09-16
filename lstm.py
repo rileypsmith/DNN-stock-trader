@@ -80,7 +80,7 @@ def load_data(batch_size=128):
     sets, and then create Tensorflow Dataset objects for training.
     """
     data_folder = 'data'
-    csv_files = sorted([str(f) for f in Path(data_folder).glob('*.csv')])[:10]
+    csv_files = sorted([str(f) for f in Path(data_folder).glob('*.csv')])
     # Load sequences for each stock
     all_sequences = []
     all_labels = []
