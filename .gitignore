@@ -8,3 +8,7 @@ lstm_trading_evaluation
 
 # Trained models
 trained_lstm
+
+# Cached files
+__pycache__
+*.pyc

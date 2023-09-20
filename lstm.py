@@ -17,6 +17,9 @@ import tensorflow as tf
 from tensorflow.data import Dataset
 from tensorflow.keras import layers, Sequential
 
+import utils
+import lstm_eval as eval
+
 warnings.simplefilter('ignore')
 
 # Use some stocks as only validation data
@@ -45,25 +48,68 @@ class DirectionalAccuracy(tf.keras.metrics.Metric):
         self.correct_count = 0
         self.total_count = 0
 
-def load_and_preprocess(csvfile):
-    """Load and preprocess the data for one stock"""
-    data = pd.read_csv(csvfile, usecols=['Adj Close', 'Volume'])
+def load_and_preprocess(csvfile, target_days_out=1, use_volume=True, 
+                        discretize_target=True, smooth_data=True):
+    """
+    Load and preprocess the data for one stock.
+    
+    Parameters
+    ----------
+    csvfile : str
+        The path to the file where data is loaded from.
+    target_days_out : int
+        The number of days in the future to set the target variable (what the
+        network is trying to predict).
+    use_volume : bool
+        Whether or not volume should be used as a feature.
+    discretize_target : bool
+        If True, turn target variable into discretized variable as follows:
+            0: y < -0.03 (loss of greater than 3%)
+            1: -0.03 < y < -0.01
+            2: -0.01 < y < 0.01
+            3: 0.01 < y < 0.03
+            4: 0.03 < y
+    smooth_data : bool
+        If True, turn very noisy stock data into more smooth exponential
+        moving average.
+    """
+    cols = ['Adj Close', 'Volume'] if use_volume else ['Adj Close']
+    data = pd.read_csv(csvfile, usecols=cols)
     # Break it up into sequences of 30 days worth of data
     sequences = []
     labels = []
-    for i in range(0, data.shape[0] - 30, 30):
+    for i in range(0, data.shape[0] - 29 - target_days_out, 30):
         sequence = data.iloc[i: i + 30].to_numpy()
-        # Normalize with min/max scaling
-        s_min = sequence.min(axis=0)
-        s_max = sequence.max(axis=0)
-        sequence = (sequence - s_min[np.newaxis,:]) / (s_max[np.newaxis,:] - s_min[np.newaxis,:])
+
+        # Optionally smooth the data
+        if smooth_data:
+            ema = sequence[0]
+            emas = [ema]
+            for item in sequence[1:]:
+                ema = (ema / 2) + (item / 2)
+                emas.append(ema)
+            sequence = np.stack(emas, axis=0)
+
+        # Normalize so that all prices are indexed to the last day in the sequence
+        norm = sequence[-1]
+        sequence = sequence / norm[np.newaxis,:]
+        # # Normalize with min/max scaling
+        # s_min = sequence.min(axis=0)
+        # s_max = sequence.max(axis=0)
+        # sequence = (sequence - s_min[np.newaxis,:]) / (s_max[np.newaxis,:] - s_min[np.newaxis,:])
         # Get label and make sure it is also normalized
-        tgt_price = (data.loc[i + 30, 'Adj Close'] - s_min[0]) / (s_max[0] - s_min[0])
+        tgt_price = data.loc[i + 29 + target_days_out, 'Adj Close'] / norm[0]
+        # tgt_price = (data.loc[i + 29 + target_days_out, 'Adj Close'] - s_min[0]) / (s_max[0] - s_min[0])
         label = tgt_price - sequence[-1, 0]
         # If any are NaN, don't keep it. This occurs when there is an error in
         # reporting the stock price and it shows up as unchanged over 30 days.
         if np.any(np.isnan(sequence)) or np.any(np.isnan(label)):
             continue
+        # Optionally turn it into a discrete label instead of continuous
+        if discretize_target:
+            tmp = (label + 0.03) / 0.02
+            tmp = min(max(tmp, 0), 4)
+            label = int(np.ceil(tmp))
         sequences.append(sequence)
         labels.append(label)
     return sequences, labels
@@ -73,7 +119,8 @@ def prepare_ds(ds, batch_size):
     ds = ds.batch(batch_size)
     return ds.prefetch(tf.data.AUTOTUNE)
 
-def load_data(batch_size=128):
+def load_data(batch_size=128, use_volume=True, target_days_out=1, 
+              discretize_target=False, smooth_data=False, debug=False):
     """
     Load the data for each stock that data is available. Apply simple preprocessing,
     batch into sequences of 30 day history, split into train and validation
@@ -81,24 +128,37 @@ def load_data(batch_size=128):
     """
     data_folder = 'data'
     csv_files = sorted([str(f) for f in Path(data_folder).glob('*.csv')])
+    if debug:
+        csv_files = csv_files[:10]
     # Load sequences for each stock
     all_sequences = []
     all_labels = []
+    holdout_sequences = []
+    holdout_labels = []
     print('Loading Data...')
     for csvfile in tqdm(csv_files):
-        # If this is a validation only stock, skip it
-        if Path(csvfile).stem in VALIDATION_STOCKS:
-            continue
-        sequences, labels = load_and_preprocess(csvfile)
-        all_sequences.extend(sequences)
-        all_labels.extend(labels)
+        # Check if this is part of holdout set
+        holdout = Path(csvfile).stem in VALIDATION_STOCKS
+        local_discretize = (not holdout) and discretize_target
+        sequences, labels = load_and_preprocess(csvfile, target_days_out, 
+                                                use_volume, local_discretize,
+                                                smooth_data)
+        # If this is a validation only stock, add it to holdout data
+        if holdout:
+            holdout_sequences.extend(sequences)
+            holdout_labels.extend(labels)
+        else:
+            all_sequences.extend(sequences)
+            all_labels.extend(labels)
     all_sequences = np.stack(all_sequences, axis=0)
     all_labels = np.array(all_labels)
+
     # Do an initial proper shuffle of the elements
     indices = np.arange(all_sequences.shape[0])
     np.random.shuffle(indices)
     all_sequences = all_sequences[indices]
     all_labels = all_labels[indices]
+
     # Turn it into a Tensorflow dataset
     seq_ds = Dataset.from_tensor_slices(all_sequences)
     label_ds = Dataset.from_tensor_slices(all_labels)
@@ -107,85 +167,41 @@ def load_data(batch_size=128):
     num_val = int(round(0.2 * all_sequences.shape[0]))
     val_ds = ds.take(num_val)
     train_ds = ds.skip(num_val)
+
     # Batch and prefetch
     train_ds = prepare_ds(ds, batch_size)
     val_ds = prepare_ds(ds, batch_size)
-    return train_ds, val_ds
 
-def trade_evaluation(model, data, supervise_every=1):
-    """
-    An evaluation function to see how network predictions stack up over time.
-    
-    Parameters
-    ----------
-    data : ndarray
-        ndarray of shape (60, 2). 60 days worth of data for one stock.
-    """
-    # First, preprocess the data
-    initial_sequence = data[:30]
-    s_min = initial_sequence.min(axis=0)
-    s_max = initial_sequence.max(axis=0)
-    data = (data - s_min[np.newaxis,:]) / (s_max[np.newaxis,:] - s_min[np.newaxis,:])
-    sequence = data[:30]
-    # Iteratively make predictions
-    actual_prices = data[:,0]
-    predicted_prices = data[:30,0].tolist()
-    for i in range(30):
-        predicted_change = float(model.predict(sequence[np.newaxis, :, :], verbose=0)[0])
-        predicted_price = sequence[-1,0] + predicted_change
-        predicted_prices.append(predicted_price)
-        if (i + 1) % supervise_every == 0:
-            # Use true price and volume for next part of sequence
-            sequence = data[i + 1: i + 31]
-        else:
-            new_data = np.array([[predicted_price, sequence[-1, 1]]])
-            sequence = np.concatenate([sequence[1:], new_data], axis=0)
-    return np.array(predicted_prices), actual_prices
+    # Prepare holdout dataset too
+    holdout_seq_ds = Dataset.from_tensor_slices(holdout_sequences)
+    holdout_label_ds = Dataset.from_tensor_slices(holdout_labels)
+    holdout_ds = Dataset.zip((holdout_seq_ds, holdout_label_ds))
+    holdout_ds = prepare_ds(holdout_ds, batch_size)
 
-class TradeEvaluationCallback(tf.keras.callbacks.Callback):
-    """A custom callback for testing the network as a trader"""
-    def __init__(self, out_folder, supervise_every=10, **kwargs):
-        super().__init__(**kwargs)
+    return train_ds, val_ds, holdout_ds
 
-        # Make sure the folder exists
-        Path(out_folder).mkdir(exist_ok=True)
-        self.out_folder = out_folder
 
-    def on_epoch_end(self, epoch, logs=None):
-        # Run the evaluation on each stock
-        for ticker in VALIDATION_STOCKS:
-            data = pd.read_csv(str(Path('data', f'{ticker}.csv')), usecols=['Adj Close', 'Volume'])
-            data = data.to_numpy()[-60:]
-            for supervise_interval in [2, 10, 30]:
-                predicted, true = trade_evaluation(self.model, data, supervise_interval)
-                # Plot it
-                saveas = str(Path(self.out_folder, f'{ticker}_{supervise_interval:02}.png'))
-                fig, ax = plt.subplots()
-                ax.plot(predicted, color='blue', linestyle='--', label='Predicted close')
-                ax.plot(true, color='black', label='True close')
-                ax.set_title(f'Network predictions for {ticker}\nSupervision every {supervise_interval} days')
-                plt.savefig(saveas)
-                plt.close()
-    
 
-class CustomLayer(layers.Layer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.sigmoid = layers.Activation('sigmoid')
-    def call(self, x):
-        x = self.sigmoid(x)
-        return (2 * x) - 0.5
 
-def make_model():
+
+
+
+def make_model(discretize=False):
     """Simple model which wil predict next day's returns"""
     model = Sequential()
     model.add(layers.LSTM(128, return_sequences=True, kernel_initializer='he_normal'))
     model.add(layers.LSTM(128, return_sequences=True, kernel_initializer='he_normal'))
     model.add(layers.LSTM(128, return_sequences=False, kernel_initializer='he_normal'))
-    model.add(layers.Dense(1, activation='linear'))
-    # model.add(CustomLayer())
+    # Final layer will depend on continuous vs discrete output variable
+    if discretize:
+        final_layer = layers.Dense(5, activation='softmax')
+        loss = tf.keras.losses.SparseCategoricalCrossentropy()
+    else:
+        final_layer = layers.Dense(1, activation='linear')
+        loss = tf.keras.losses.MeanSquaredError()
+    model.add(final_layer)
     model.compile(
-        loss=tf.keras.losses.MeanSquaredError(),
+        loss=loss,
         optimizer=tf.keras.optimizers.Adam(learning_rate=4e-4),
         # metrics=[
         #     DirectionalAccuracy()
@@ -194,19 +210,60 @@ def make_model():
     )
     return model
 
-def train():
+def plot_label_dist(ds):
+    """Plot a histogram of all labels"""
+    all_labels = []
+    count = 0
+    for _, labels in ds:
+        all_labels.extend(labels.numpy().tolist())
+        count += 1
+        if count >= 100:
+            break
+    fig, ax = plt.subplots()
+    bins = np.linspace(-0.5, 4.5, 6)
+    ax.hist(all_labels, color='dodgerblue', alpha=0.4, bins=bins)
+    plt.show()
+
+def train(output_dir, use_volume=False, discretize=False, target_days_out=1,
+          smooth_data=False, debug=False):
     """Main training function for LSTM"""
+    # Make an output directory
+    output_dir = utils.setup_output_dir(output_dir)
+
     # Load up the data
-    train_ds, val_ds = load_data()
+    train_ds, val_ds = load_data(use_volume=use_volume, 
+                                 target_days_out=target_days_out,
+                                 discretize_target=discretize,
+                                 smooth_data=smooth_data,
+                                 debug=debug)
+    
+    plot_label_dist(train_ds)
+    stop
+
     # Build thfe model
-    model = make_model()
+    model = make_model(discretize=discretize)
     # Setup some callbacks
-    logger = tf.keras.callbacks.CSVLogger('lstm_log.csv')
-    ckpt = tf.keras.callbacks.ModelCheckpoint('trained_lstm', save_best_only=True)
-    trade_eval = TradeEvaluationCallback('lstm_trading_evaluation')
+    logger = tf.keras.callbacks.CSVLogger(str(Path(output_dir, 'lstm_log.csv')))
+    ckpt = tf.keras.callbacks.ModelCheckpoint(str(Path(output_dir, 'trained_lstm')), 
+                                              save_best_only=True)
+    callbacks = [logger, ckpt]
+    if not discretize:
+        trade_eval = eval.AutoregressiveEvalCallback(str(Path(output_dir, 'lstm_trading_evaluation')), 
+                                                     use_volume=use_volume)
+        callbacks.append(trade_eval)
     # Run training
-    model.fit(train_ds, validation_data=val_ds, epochs=20, 
-              callbacks=[logger, ckpt, trade_eval])
+    model.fit(train_ds, validation_data=val_ds, epochs=20, callbacks=callbacks)
 
 if __name__ == '__main__':
-    train()
+    # Output directory
+    output_dir = 'LSTM_OUTPUT'
+
+    # Set training parameters
+    use_volume = False
+    discretize = True
+    target_days_out = 5
+    smooth_data = True
+    debug = True
+
+    train(output_dir, use_volume, discretize, target_days_out, 
+          smooth_data=smooth_data, debug=debug)

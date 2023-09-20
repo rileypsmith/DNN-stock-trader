@@ -4,13 +4,11 @@ A stock trader based on Deep Q-learning.
 @author: Riley Smith
 Created: 08/31/2023
 """
-
 import csv
-import imageio
+from pathlib import Path
 import random
 import warnings
 
-import gym
 import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
@@ -23,20 +21,21 @@ warnings.simplefilter('ignore')
 
 class Agent():
     """A class for containing q-net and t-net, plus all agent functions."""
-    def __init__(self):
+    def __init__(self, use_volume=False):
         # Setup networks
-        self.q_net = self._build_net()
-        self.t_net = self._build_net()
+        self.q_net = self._build_net(use_volume)
+        self.t_net = self._build_net(use_volume)
         self.update()
 
         self.epsilon = 1
         self.gamma = 0.9
     
-    def _build_net(self):
+    def _build_net(self, use_volume):
         """Simple model which wil predict next day's returns"""
+        input_shape = (30,2) if use_volume else (30,1)
         model = Sequential()
         model.add(layers.LSTM(128, return_sequences=True, 
-                              kernel_initializer='he_normal', input_shape=(30,2)))
+                              kernel_initializer='he_normal', input_shape=input_shape))
         model.add(layers.LSTM(128, return_sequences=True, kernel_initializer='he_normal'))
         model.add(layers.LSTM(128, return_sequences=False, kernel_initializer='he_normal'))
         model.add(layers.Dense(2, activation='linear'))
@@ -106,22 +105,19 @@ class Agent():
             total_reward += reward
             value_over_time.append(env.portfolio_value)
         if return_values:
-            return value_over_time
+            return total_reward, value_over_time
         return total_reward
 
-    def evaluate(self, env):
-        """Run 100 episodes to see how long you can keep the pole up"""
-        total_reward = 0
-        for _ in range(100):
-            total_reward += self.run_episode(env)
-        return total_reward / 100
-
-    def plot_eval(self, env, saveas=None):
-        """"Make a plot of portfolio value over time."""
-        # Run 100 episodes and store portfolio value each time
+    def evaluate(self, env, saveas=None, num_episodes=10):
+        """Run reward-based evaluation and make a plot"""
         values_over_time = []
-        for _ in range(100):
-            values_over_time.append(self.run_episode(env))
+        total_reward = 0
+        for _ in tqdm(range(num_episodes)):
+            reward, value_over_time = self.run_episode(env, return_values=True)
+            total_reward += reward
+            values_over_time.append(value_over_time)
+        # Compute average reward
+        av_reward = total_reward / num_episodes
         # Compute average portfolio value over time
         values_over_time = np.array(values_over_time)
         av_vals = values_over_time.mean(axis=0)
@@ -138,6 +134,38 @@ class Agent():
             plt.close()
         else:
             plt.show()
+
+    # def evaluate(self, env):
+    #     """Run 100 episodes to see how long you can keep the pole up"""
+    #     total_reward = 0
+    #     print('RUNNING EVALUATION')
+    #     for _ in tqdm(range(10)):
+    #         total_reward += self.run_episode(env)
+    #     return total_reward / 100
+
+    # def plot_eval(self, env, saveas=None):
+    #     """"Make a plot of portfolio value over time."""
+    #     # Run 100 episodes and store portfolio value each time
+    #     values_over_time = []
+    #     print('PLOTTING EVALUATION')
+    #     for _ in range(10):
+    #         values_over_time.append(self.run_episode(env))
+    #     # Compute average portfolio value over time
+    #     values_over_time = np.array(values_over_time)
+    #     av_vals = values_over_time.mean(axis=0)
+    #     confidence_interval = values_over_time.std(axis=0) * 1.96
+    #     # Plot it
+    #     fig, ax = plt.subplots()
+    #     x = np.arange(av_vals.size)
+    #     ax.plot(x, av_vals, color='black', linesytle='--', label='Average portfolio value')
+    #     ax.fill_between(x, av_vals - confidence_interval, av_vals + confidence_interval,
+    #                     color='orange', alpha=0.2, label='95% confidence interval')
+    #     ax.legend()
+    #     if saveas is not None:
+    #         plt.savefig(saveas)
+    #         plt.close()
+    #     else:
+    #         plt.show()
     
     def update(self):
         """Copy the weights of the Q network over to the target network"""
@@ -155,7 +183,7 @@ class ReplayBuffer():
         self.buffer = []
         self.buffer_size = buffer_size
 
-        self.end_factor = 0
+        # self.end_factor = 0
 
     def store_experience(self, env, agent, state):
         # Implement agent's policy to get an action for this state
@@ -167,16 +195,20 @@ class ReplayBuffer():
         return next_state, done
 
     def fill_buffer(self, env, agent):
+        progbar = tqdm(total=self.buffer_size)
         while len(self.buffer) < self.buffer_size:
             # Start by resetting environment
             state, _ = env.reset()
             done = False
             while not done:
                 state, done = self.store_experience(env, agent, state)
-                # If this episode is over or you hit random stopping point, reset
-                # environment
-                if done or np.random.random() < self.end_factor or len(self.buffer) >= self.buffer_size:
+                progbar.update(1)
+                if len(self.buffer) >= self.buffer_size:
                     break
+                # # If this episode is over or you hit random stopping point, reset
+                # # environment
+                # if done or np.random.random() < self.end_factor or len(self.buffer) >= self.buffer_size:
+                #     break
 
     def sample_buffer(self, batch_size=128):
         """Return a random sample from the buffer, without replacement"""
@@ -185,7 +217,7 @@ class ReplayBuffer():
 
     def update(self):
         self.replay_buffer = []
-        self.end_factor *= 0.9
+        # self.end_factor *= 0.9
 
 class CustomCSVWriter():
     """Super simple callback for writing to CSV file"""
@@ -201,34 +233,36 @@ class CustomCSVWriter():
             writer = csv.writer(file)
             writer.writerow([epoch, val_steps])
 
-def train(num_epochs=20):
+def train(num_epochs=100):
     # Build an agent
     agent = Agent()
     # Setup replay buffer
-    replay_buffer = ReplayBuffer()
+    replay_buffer = ReplayBuffer(buffer_size=2560)
     # Build environment
     env = StockTradingEnv()
     log = CustomCSVWriter('test.csv')
+    # Make a directory for evaluation figures
+    figdir = Path(Path(__file__).absolute().parent, 'DQN_eval')
+    figdir.mkdir(exist_ok=True)
     # Run a bunch of epochs of training
     for epoch in range(num_epochs):
+        print(f'EPOCH {epoch:03}')
         replay_buffer.fill_buffer(env, agent)
-        for batch in replay_buffer.sample_buffer():
+        for batch in replay_buffer.sample_buffer(batch_size=128):
             agent.train(batch)
         # Run evaluation at the end of each epoch
-        eval_result = agent.evaluate(env)
+        figpath = str(Path(figdir, f'EPOCH{epoch:03}.png'))
+        eval_result = agent.evaluate(env, saveas=figpath)
         log.update(epoch, eval_result)
         print(f'Epoch {epoch+1}/{num_epochs}: {eval_result}')
+
+        # Also plot evaluation results
+
 
         # Update agent and buffer
         replay_buffer.update()
         agent.update_epsilon()
         agent.update()
-        if (epoch + 1) % 2 == 0:
-            agent.save_gif(env, epoch)
-            # breakpoint()
-        # env.render()
-        
-
 
 if __name__ == '__main__':
     train()
