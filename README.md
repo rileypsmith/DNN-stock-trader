@@ -59,5 +59,6 @@ This normalization is applied for training both LSTM and RL agent.
 ### LSTM
 Unsurprisingly the LSTM does not perform well in this experiment. With only
 historical prices to learn from, day-to-day stock fluctuations are too random
-for any meaningful learning to take place. 
+for any meaningful learning to take place. In fact, if this model did perform
+well, it would be very easy for someone to 
 

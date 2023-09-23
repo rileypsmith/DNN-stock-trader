@@ -116,27 +116,18 @@ def categorical_eval(model, ds):
     all_labels = np.concatenate(all_labels, axis=0)
     # Aggregate results by class
     aggregate_results = {}
-    for class_idx in np.unique(all_preds):
+    for class_idx in range(5):
         returns = all_labels[np.where(all_preds == class_idx)]
-        aggregate_results[class_idx] = {
-            'av': returns.mean(),
-            'std': returns.std()
-        }
+        if returns.size == 0:
+            d = {'av': 'NA', 'std': 'NA'}
+        else:
+            d = {
+                'av': returns.mean(),
+                'std': returns.std()
+            }
+        aggregate_results[class_idx] = d
+    print('\n\n\nAGGREGATE RESULTS: ', aggregate_results, '\n\n\n')
     return aggregate_results
-
-class CustomCSVWriter():
-    """Super simple callback for writing to CSV file"""
-    def __init__(self, csv_file):
-        # Write headers to file
-        self.csv_file = csv_file
-        headers = ['Epoch', 'av_reward']
-        with open(csv_file, 'w+', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(headers)
-    def update(self, epoch, val_steps):
-        with open(self.csv_file, 'a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([epoch, val_steps])
 
 class CategoricalEvalCallback(tf.keras.callbacks.Callback):
     """Custom callback for evaluating performance of categorical model"""
@@ -154,7 +145,7 @@ class CategoricalEvalCallback(tf.keras.callbacks.Callback):
         with open(self.outfile, 'w+', newline='') as csvfile:
             writer = csv.writer(csvfile)
             row = ['Epoch']
-            for class_idx in range(5);
+            for class_idx in range(5):
                 row.append(f'CLASS{class_idx}_mean')
                 row.append(f'CLASS{class_idx}_std')
             writer.writerow(row)

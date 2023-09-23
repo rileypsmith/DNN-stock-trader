@@ -180,11 +180,32 @@ def load_data(batch_size=128, use_volume=True, target_days_out=1,
 
     return train_ds, val_ds, holdout_ds
 
+class LocalizedCategoricalLoss(tf.keras.losses.Loss):
+    def __init__(self, gamma=0.4, **kwargs):
+        super().__init__(**kwargs)
+        self.gamma = gamma
 
-
-
-
-
+    def call(self, y_true, y_pred):
+        """
+        Parameters
+        ----------
+        y_true : tf.Tensor
+            An integer tensor of shape (bs,). Each entry is the correct class
+            index for that item in the batch.
+        y_pred : tf.Tensor
+            A Flot tensor of shape (bs,# classes). Each entry is the softmaxed
+            prediction over all classes for that example.
+        """
+        # Form target vector
+        target = tf.stack([tf.range(5, dtype=tf.float32)]*y_true.shape[0], axis=0)
+        target = tf.math.abs(target - tf.cast(y_true, tf.float32))
+        target = tf.math.pow(self.gamma, target)
+        target /= tf.math.reduce_sum(target, axis=1)[:,tf.newaxis]
+        # Now do crossentropy relative to it
+        log_pred = tf.math.log(y_pred)
+        crossentropy = log_pred * target
+        loss = tf.math.reduce_mean(crossentropy, axis=1)
+        return tf.math.reduce_mean(loss) * -1
 
 def make_model(discretize=False):
     """Simple model which wil predict next day's returns"""
@@ -195,7 +216,8 @@ def make_model(discretize=False):
     # Final layer will depend on continuous vs discrete output variable
     if discretize:
         final_layer = layers.Dense(5, activation='softmax')
-        loss = tf.keras.losses.SparseCategoricalCrossentropy()
+        loss = LocalizedCategoricalLoss()
+        # loss = tf.keras.losses.SparseCategoricalCrossentropy()
     else:
         final_layer = layers.Dense(1, activation='linear')
         loss = tf.keras.losses.MeanSquaredError()
@@ -231,15 +253,12 @@ def train(output_dir, use_volume=False, discretize=False, target_days_out=1,
     output_dir = utils.setup_output_dir(output_dir)
 
     # Load up the data
-    train_ds, val_ds = load_data(use_volume=use_volume, 
-                                 target_days_out=target_days_out,
-                                 discretize_target=discretize,
-                                 smooth_data=smooth_data,
-                                 debug=debug)
+    train_ds, val_ds, test_ds = load_data(use_volume=use_volume, 
+                                          target_days_out=target_days_out,
+                                          discretize_target=discretize,
+                                          smooth_data=smooth_data,
+                                          debug=debug)
     
-    plot_label_dist(train_ds)
-    stop
-
     # Build thfe model
     model = make_model(discretize=discretize)
     # Setup some callbacks
@@ -247,23 +266,25 @@ def train(output_dir, use_volume=False, discretize=False, target_days_out=1,
     ckpt = tf.keras.callbacks.ModelCheckpoint(str(Path(output_dir, 'trained_lstm')), 
                                               save_best_only=True)
     callbacks = [logger, ckpt]
-    if not discretize:
+    if discretize:
+        trade_eval = eval.CategoricalEvalCallback(test_ds, str(Path(output_dir, 'lstm_eval.csv')))
+    else:
         trade_eval = eval.AutoregressiveEvalCallback(str(Path(output_dir, 'lstm_trading_evaluation')), 
                                                      use_volume=use_volume)
-        callbacks.append(trade_eval)
+    callbacks.append(trade_eval)
     # Run training
     model.fit(train_ds, validation_data=val_ds, epochs=20, callbacks=callbacks)
 
 if __name__ == '__main__':
     # Output directory
-    output_dir = 'LSTM_OUTPUT'
+    output_dir = 'LSTM_OUTPUT_DISCRETIZED_30dayhorizon'
 
     # Set training parameters
     use_volume = False
     discretize = True
-    target_days_out = 5
+    target_days_out = 30
     smooth_data = True
-    debug = True
+    debug = False
 
     train(output_dir, use_volume, discretize, target_days_out, 
           smooth_data=smooth_data, debug=debug)
