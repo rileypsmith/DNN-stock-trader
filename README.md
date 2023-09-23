@@ -51,7 +51,7 @@ normalized to they sum to 1, i.e. so they encode a probability distribution over
 classes. The final output of the network (a softmax layer) is then compared to
 this target vector via cross-entropy And the loss is as follows:
 
-$L=-1 *  {\huge \sum}_i t_i ln(p_i)$, where $t$ is the target vector, $p$ is
+$L=-1 *  {\huge \sum}\limits_{i=0}^{# classes} t_i ln(p_i)$, where $t$ is the target vector, $p$ is
 the predicted probability vector, and $i$ ranges over the classes.
 
 The classification approach fairs somewhat
