@@ -19,6 +19,19 @@ More recent work in sequence modeling has favored attention mechanisms, such as
 the original Transformer network and derivatives from it, but LSTMs are still
 useful for a variety of tasks.
 
+In this analysis, LSTMs are used in two different ways. The first is to take a
+sequence of historical price data and use an LSTM to directly predict the next
+day's asset price. Such a model can then be used auto-regressively to predict
+prices some time in the future, though as we will see, historical prices are
+not sufficient fo build an accurate model in this fashion.
+
+A second approach is to discretize stock returns over some fixed time horizon
+and turn the sequence modeling task into a classificaiton task: in this case,
+the LSTM ingests historical prices and tries to predict which "bin" the stock
+returns will fall into over the following 'n' days. This approach fairs somewhat
+better than the auto-regressive approach, but is still a terrible basis for
+trading.
+
 ## Deep Q-Learning
 Deep Q-Learning is entirely different to traditional deep learning with LSTMs.
 It is a reinforcement learning technique that consists of two networks, often
@@ -57,8 +70,75 @@ This normalization is applied for training both LSTM and RL agent.
 # Results
 
 ### LSTM
+
 Unsurprisingly the LSTM does not perform well in this experiment. With only
 historical prices to learn from, day-to-day stock fluctuations are too random
 for any meaningful learning to take place. In fact, if this model did perform
-well, it would be very easy for someone to 
+well, it would be very easy for anyone to recreate these results, and the
+LSTM predictions would be accounted for by future-looking trades in the
+market, but this is a digression.
 
+Let's take a look at the performance of the auto-regressive model. This model is
+trained to ingest 30 days worth of historical stock prices and output a float
+prediction for the next day's closing price. It can then be evaluated in an
+auto-regressive fashion: allow it to predict the next day's price, then feed
+this predicted price back in as the last datapoint to allow it to predict the
+price two days out, and so on. When evaluating performance, we can "supervise"
+the network by correcting it with the actual closing price every 'n' days to see
+how many days in the future it can make accurate predictions before breaking down.
+
+Below is a plot of what happens when a trained network makes predictions one day
+at a time for one of the holdout stocks, Apple.
+
+![AAPL true vs. pred](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/auto-regressive_LSTM/EPOCH005_AAPL_01.png)
+
+This looks pretty good, right? Well, not so much. In this case, the network is
+being corrected every day. So it is only ever asked to make predictions one day
+in the future. It may be hard to tell from this plot, but basically the network
+is learning to always predict a slight increase in the stock price. This makes
+sense in the context of historical stock pricess--they have gone up considerably
+over the time frame covered by the dataset. But it does little to help us
+predict day-to-day fluctuations.
+
+We can see this better by looking at results that are corrected only every 10
+days. Here is that result for another holdout stock, Boeing:
+
+![BA true vs. pred](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/auto-regressive_LSTM/EPOCH005_BA_10.png)
+
+Now we can see that when the network is allowed to make its own predictions into
+the future, it basically just interpolates an estimate that the stock will
+appreciate over time. Again, not bad on average over a very long time period, 
+but in this example we can see how it would hurt us if we used this prediction
+to inform trading decisions regarding Boeing.
+
+In some cases though, this interpolation is surprisingly good. Here is an exmaple
+from a third holdout stock (IBM) that is allowed to predict 30 days into the
+future auto-regressively:
+
+![BA true vs. pred](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/auto-regressive_LSTM/EPOCH005_IBM_30.png)
+
+We see the same trend of interpolated expectations for appreciation, but in this
+case it is surprisingly not bad.
+
+The takeaway of all this is that with only historical prices to learn from, the
+LSTM is only able to learn that over time stocks increase in value, which is true
+within the context of the dataset. But it does not have enough information to
+learn more high-frequency fluctuations in the stock price--at least not with only
+30 days of historical data to look at.
+
+Now let's take a look at the performance of the classification model. Results
+in the plot below show performance over the course of training on a holdout set
+looking 5 days into the future. A prediction of class 4 represents highest
+estimated returns (>3%) while a prediction of class 0 represents lowest possible
+returns (loss > 3%). There are two main things to note in the plot below. First,
+we can see that the classes are roughly sorted correctly by the end of training.
+That is, on average stocks predicted in class 4 outperform those in class 0. 
+However, the error bars show one standard deviation around the mean returns for
+each class, and this is not pretty. Although the model is on average learning
+to more or less sort stocks correctly according to their forward looking returns,
+there is massive uncertainty. If this model were used to actually try and trade
+these stocks, returns would swing wildly from large profits to large losses and
+the risk would be very high.
+
+Again we are faced with the same intuition: historical prices alone are not
+sufficient data to build an accurate model for future asset price forecasting.

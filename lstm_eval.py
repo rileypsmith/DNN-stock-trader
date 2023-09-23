@@ -162,4 +162,46 @@ class CategoricalEvalCallback(tf.keras.callbacks.Callback):
             writer = csv.writer(csvfile)
             writer.writerow(row)
         
+def plot_eval_log(eval_log, title=None, saveas=None):
+    """
+    Take the evaluation log from training and make a plot of average returns
+    over time for each class, with error bars.
+    """
+    # Load eavluation log
+    log = pd.read_csv(eval_log)
+
+    # Build a figure and set some colors
+    fig, ax = plt.subplots(figsize=(8,5))
+    COLORS = ['dodgerblue', 'orange', 'lightcoral', 'aquamarine', 'mediumorchid']
+
+    # Plot the series
+    x = np.arange(log.shape[0]) + 1
+    for class_idx in range(5):
+        color = COLORS[class_idx]
+
+        # Grab data for this class and get rid of string values
+        mean_over_time = log[f'CLASS{class_idx}_mean'].to_numpy()
+        mean_over_time = np.where(mean_over_time == 'NA', np.nan, mean_over_time).astype(float) * 100
+        std_over_time = log[f'CLASS{class_idx}_std'].to_numpy()
+        std_over_time = np.where(std_over_time == 'NA', np.nan, std_over_time).astype(float) * 100
+        
+        # Plot it
+        ax.plot(mean_over_time, label=f'Class {class_idx} mean returns', color=color)
+        ax.fill_between(x, mean_over_time - std_over_time, mean_over_time + std_over_time,
+                        color=color, alpha=0.2)
+    
+    # Format axes and title
+    ax.legend()
+    ax.set_xlabel('Epoch', fontsize=14)
+    ax.set_ylabel('Return (%)', fontsize=14)
+    if title is not None:
+        ax.set_title(title, fontsize=16)
+
+    # Optionally save the figure
+    if saveas is not None:
+        plt.savefig(saveas)
+        plt.close()
+    else:
+        plt.show()
+
 
