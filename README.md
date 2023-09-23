@@ -34,7 +34,27 @@ not sufficient fo build an accurate model in this fashion.
 A second approach is to discretize stock returns over some fixed time horizon
 and turn the sequence modeling task into a classificaiton task: in this case,
 the LSTM ingests historical prices and tries to predict which "bin" the stock
-returns will fall into over the following 'n' days. For this analysis, five bins are used, corresponding to stock returns in $(-\inf, -0.03],(-0.03,-0.01],(-0.01,0.01],(0.01,0.03],(0.03,\inf)$. The time horizon over which returns are predicted can be anything, but we will compare results for 5 days in the future and 30 days in the future. This approach fairs somewhat
+returns will fall into over the following 'n' days. For this analysis, five bins are used, corresponding to stock returns in $(-\inf, -0.03],(-0.03,-0.01],(-0.01,0.01],(0.01,0.03],(0.03,\inf)$. The time horizon over which returns are predicted can be anything, but we will compare results for 5 days in the future and 30 days in the future. 
+
+For training, a different loss function is required than the auto-regressive
+approach since this approach is more of a classification task. In general,
+cross-entropy loss is useful for classification tasks, but standard sparse
+categorical crossentropy assumes there is no relation between neighboring
+classes (e.g. dog vs cat--the fact that they may be classes 0 and 1 is irrelevant).
+In our case, however, neighboring classes are more similar than distance classes.
+If a stock actually returns 4% and is predicted to return 2%, this is much better
+than if it is predicted to return -2%. To capture this, a custom loss function is
+used that first creates a target vector for each class that is not a one-hot
+vector: instead, it contains the highest value for the correct class but decays
+exponentially as class index moves away from this point. Target vectors are
+normalized to they sum to 1, i.e. so they encode a probability distribution over
+classes. The final output of the network (a softmax layer) is then compared to
+this target vector via cross-entropy And the loss is as follows:
+
+$L=-1 * \mathlarger{\sum}_i t_i ln(p_i)$, where $t$ is the target vector, $p$ is
+the predicted probability vector, and $i$ ranges over the classes.
+
+The classification approach fairs somewhat
 better than the auto-regressive approach, but is still a terrible basis for
 trading.
 
