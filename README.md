@@ -142,7 +142,7 @@ looking 5 days into the future. A prediction of class 4 represents highest
 estimated returns (>3%) while a prediction of class 0 represents lowest possible
 returns (loss > 3%). 
 
-![BA true vs. pred](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/classification_LSTM_new/5day_classification_lstm_results.png)
+![BA true vs. pred](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/classification_LSTM/5day_classification_lstm_results.png)
 
 There are two main things to note in this plot. First,
 we can see that the classes are roughly sorted correctly by the end of training.

@@ -186,7 +186,7 @@ def plot_eval_log(eval_log, title=None, saveas=None):
         std_over_time = np.where(std_over_time == 'NA', np.nan, std_over_time).astype(float) * 100
         
         # Plot it
-        ax.plot(mean_over_time, label=f'Class {class_idx} mean returns', color=color)
+        ax.plot(x, mean_over_time, label=f'Class {class_idx} mean returns', color=color)
         ax.fill_between(x, mean_over_time - std_over_time, mean_over_time + std_over_time,
                         color=color, alpha=0.2)
     
