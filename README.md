@@ -19,16 +19,22 @@ More recent work in sequence modeling has favored attention mechanisms, such as
 the original Transformer network and derivatives from it, but LSTMs are still
 useful for a variety of tasks.
 
-In this analysis, LSTMs are used in two different ways. The first is to take a
+In this analysis, LSTMs are used in two different ways, which are discussed below.
+
+### Auto-regressive LSTM 
+
+The first approach is to take a
 sequence of historical price data and use an LSTM to directly predict the next
-day's asset price. Such a model can then be used auto-regressively to predict
+day's asset price. In this case, the output of the model is a float and the model is trained using mean squared error as a loss function. Once trained, this model can then be used auto-regressively to predict
 prices some time in the future, though as we will see, historical prices are
 not sufficient fo build an accurate model in this fashion.
+
+### Classification LSTM
 
 A second approach is to discretize stock returns over some fixed time horizon
 and turn the sequence modeling task into a classificaiton task: in this case,
 the LSTM ingests historical prices and tries to predict which "bin" the stock
-returns will fall into over the following 'n' days. This approach fairs somewhat
+returns will fall into over the following 'n' days. For this analysis, five bins are used, corresponding to stock returns in $(-\inf, -0.03],(-0.03,-0.01],(-0.01,0.01],(0.01,0.03],(0.03,\inf)$. The time horizon over which returns are predicted can be anything, but we will compare results for 5 days in the future and 30 days in the future. This approach fairs somewhat
 better than the auto-regressive approach, but is still a terrible basis for
 trading.
 
@@ -69,7 +75,7 @@ This normalization is applied for training both LSTM and RL agent.
 
 # Results
 
-### LSTM
+## LSTM
 
 Unsurprisingly the LSTM does not perform well in this experiment. With only
 historical prices to learn from, day-to-day stock fluctuations are too random
@@ -77,6 +83,8 @@ for any meaningful learning to take place. In fact, if this model did perform
 well, it would be very easy for anyone to recreate these results, and the
 LSTM predictions would be accounted for by future-looking trades in the
 market, but this is a digression.
+
+### Auto-regressive implementation
 
 Let's take a look at the performance of the auto-regressive model. This model is
 trained to ingest 30 days worth of historical stock prices and output a float
@@ -126,11 +134,17 @@ within the context of the dataset. But it does not have enough information to
 learn more high-frequency fluctuations in the stock price--at least not with only
 30 days of historical data to look at.
 
+### Classification approach
+
 Now let's take a look at the performance of the classification model. Results
 in the plot below show performance over the course of training on a holdout set
 looking 5 days into the future. A prediction of class 4 represents highest
 estimated returns (>3%) while a prediction of class 0 represents lowest possible
-returns (loss > 3%). There are two main things to note in the plot below. First,
+returns (loss > 3%). 
+
+![BA true vs. pred](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/classification_LSTM/5day_classification_lstm_results.png)
+
+There are two main things to note in this plot. First,
 we can see that the classes are roughly sorted correctly by the end of training.
 That is, on average stocks predicted in class 4 outperform those in class 0. 
 However, the error bars show one standard deviation around the mean returns for
