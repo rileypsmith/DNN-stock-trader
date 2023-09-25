@@ -34,7 +34,7 @@ not sufficient fo build an accurate model in this fashion.
 A second approach is to discretize stock returns over some fixed time horizon
 and turn the sequence modeling task into a classificaiton task: in this case,
 the LSTM ingests historical prices and tries to predict which "bin" the stock
-returns will fall into over the following 'n' days. For this analysis, five bins are used, corresponding to stock returns in $(-\inf, -0.03],(-0.03,-0.01],(-0.01,0.01],(0.01,0.03],(0.03,\inf)$. The time horizon over which returns are predicted can be anything, but we will compare results for 5 days in the future and 30 days in the future. 
+returns will fall into over the following 'n' days. For this analysis, five bins are used, corresponding to stock returns in $(-\inf, -0.03],(-0.03,-0.01],(-0.01,0.01],(0.01,0.03],(0.03,\inf)$. The time horizon over which returns are predicted can be anything, but in this analysis we will attempt to predict stock prices 5 days in the future. 
 
 For training, a different loss function is required than the auto-regressive
 approach since this approach is more of a classification task. In general,
@@ -174,5 +174,5 @@ there is massive uncertainty. If this model were used to actually try and trade
 these stocks, returns would swing wildly from large profits to large losses and
 the risk would be very high.
 
-Again we are faced with the same intuition: historical prices alone are not
+Again we are faced with the same conclusion: historical prices alone are not
 sufficient data to build an accurate model for future asset price forecasting.
