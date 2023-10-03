@@ -16,6 +16,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, Model, Sequential
 
 from env import StockTradingEnv
+import utils
 
 warnings.simplefilter('ignore')
 
@@ -233,17 +234,19 @@ class CustomCSVWriter():
             writer = csv.writer(file)
             writer.writerow([epoch, val_steps])
 
-def train(num_epochs=100):
+def train(outdir, num_epochs=100):
     # Build an agent
     agent = Agent()
     # Setup replay buffer
     replay_buffer = ReplayBuffer(buffer_size=2560)
     # Build environment
     env = StockTradingEnv()
-    log = CustomCSVWriter('test.csv')
+    # Setup outputs
+    outdir = utils.setup_output_dir(outdir)
+    log = CustomCSVWriter(str(Path(outdir, 'DQN_log.csv')))
     # Make a directory for evaluation figures
-    figdir = Path(Path(__file__).absolute().parent, 'DQN_eval')
-    figdir.mkdir(exist_ok=True)
+    figdir = Path(outdir, 'DQN_eval')
+    figdir.mkdir()
     # Run a bunch of epochs of training
     for epoch in range(num_epochs):
         print(f'EPOCH {epoch:03}')
@@ -265,7 +268,8 @@ def train(num_epochs=100):
         agent.update()
 
 if __name__ == '__main__':
-    train()
+    outdir = 'DQN_TEST'
+    train(outdir)
 
     
 

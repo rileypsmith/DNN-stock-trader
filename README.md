@@ -49,7 +49,7 @@ vector: instead, it contains the highest value for the correct class but decays
 exponentially as class index moves away from this point. Target vectors are
 normalized to they sum to 1, i.e. so they encode a probability distribution over
 classes. The final output of the network (a softmax layer) is then compared to
-this target vector via cross-entropy And the loss is as follows:
+this target vector via cross-entropy and the loss is as follows:
 
 $L=-1 *  {\huge \sum}\limits_{i=0}^n t_i ln(p_i)$, where $t$ is the target vector, $p$ is
 the predicted probability vector, and $n$ is the number of classes.
@@ -76,7 +76,14 @@ value for the Deep Q-Learning agent.
 
 While this problem could get very complicated with the introduction of different
 choices of stocks and financial assets, for simplicity this analysis focuses on
-allowing the agent to trade only one stock at a time.
+allowing the agent to trade only one stock at a time. Additionally, the agent is
+limited to two actions at each step: buy or sell. If the agent chooses the buy
+action and the asset is already owned, this is interpreted as a hold and no
+action is taken. Similarly, if sell is chosen but the asset is not owned, the
+agent takes no ation. Note that this assumes the agent is investing all of its
+available capital at one time; it cannot choose to invest only partial capital
+(this would significantly complicate the problem, though may work alongside the
+choice of multiple assets, and could be a possible extension of this analysis).
 
 ## Data
 Data for this analysis is scraped from Yahoo Finance with a simple scraper that
