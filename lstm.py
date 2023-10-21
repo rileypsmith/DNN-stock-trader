@@ -93,13 +93,8 @@ def load_and_preprocess(csvfile, target_days_out=1, use_volume=True,
         # Normalize so that all prices are indexed to the last day in the sequence
         norm = sequence[-1]
         sequence = sequence / norm[np.newaxis,:]
-        # # Normalize with min/max scaling
-        # s_min = sequence.min(axis=0)
-        # s_max = sequence.max(axis=0)
-        # sequence = (sequence - s_min[np.newaxis,:]) / (s_max[np.newaxis,:] - s_min[np.newaxis,:])
         # Get label and make sure it is also normalized
         tgt_price = data.loc[i + 29 + target_days_out, 'Adj Close'] / norm[0]
-        # tgt_price = (data.loc[i + 29 + target_days_out, 'Adj Close'] - s_min[0]) / (s_max[0] - s_min[0])
         label = tgt_price - sequence[-1, 0]
         # If any are NaN, don't keep it. This occurs when there is an error in
         # reporting the stock price and it shows up as unchanged over 30 days.
@@ -217,17 +212,15 @@ def make_model(discretize=False):
     if discretize:
         final_layer = layers.Dense(5, activation='softmax')
         loss = LocalizedCategoricalLoss()
-        # loss = tf.keras.losses.SparseCategoricalCrossentropy()
     else:
         final_layer = layers.Dense(1, activation='linear')
         loss = tf.keras.losses.MeanSquaredError()
     model.add(final_layer)
+    metrics = [DirectionalAccuracy()] if discretize else []
     model.compile(
         loss=loss,
         optimizer=tf.keras.optimizers.Adam(learning_rate=4e-4),
-        # metrics=[
-        #     DirectionalAccuracy()
-        # ],
+        metrics=metrics,
         run_eagerly=True
     )
     return model
@@ -277,12 +270,12 @@ def train(output_dir, use_volume=False, discretize=False, target_days_out=1,
 
 if __name__ == '__main__':
     # Output directory
-    output_dir = 'LSTM_OUTPUT_DISCRETIZED_30dayhorizon'
+    output_dir = 'LSTM_OUTPUT_DISCRETIZED_5dayhorizon'
 
     # Set training parameters
     use_volume = False
     discretize = True
-    target_days_out = 30
+    target_days_out = 5
     smooth_data = True
     debug = False
 

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
-from tensorflow.keras import layers, Model, Sequential
+from tensorflow.keras import layers, Sequential
 
 from env import StockTradingEnv
 import utils
@@ -126,7 +126,7 @@ class Agent():
         # Plot it
         fig, ax = plt.subplots()
         x = np.arange(av_vals.size)
-        ax.plot(x, av_vals, color='black', linesytle='--', label='Average portfolio value')
+        ax.plot(x, av_vals, color='black', linestyle='--', label='Average portfolio value')
         ax.fill_between(x, av_vals - confidence_interval, av_vals + confidence_interval,
                         color='orange', alpha=0.2, label='95% confidence interval')
         ax.legend()
@@ -135,38 +135,6 @@ class Agent():
             plt.close()
         else:
             plt.show()
-
-    # def evaluate(self, env):
-    #     """Run 100 episodes to see how long you can keep the pole up"""
-    #     total_reward = 0
-    #     print('RUNNING EVALUATION')
-    #     for _ in tqdm(range(10)):
-    #         total_reward += self.run_episode(env)
-    #     return total_reward / 100
-
-    # def plot_eval(self, env, saveas=None):
-    #     """"Make a plot of portfolio value over time."""
-    #     # Run 100 episodes and store portfolio value each time
-    #     values_over_time = []
-    #     print('PLOTTING EVALUATION')
-    #     for _ in range(10):
-    #         values_over_time.append(self.run_episode(env))
-    #     # Compute average portfolio value over time
-    #     values_over_time = np.array(values_over_time)
-    #     av_vals = values_over_time.mean(axis=0)
-    #     confidence_interval = values_over_time.std(axis=0) * 1.96
-    #     # Plot it
-    #     fig, ax = plt.subplots()
-    #     x = np.arange(av_vals.size)
-    #     ax.plot(x, av_vals, color='black', linesytle='--', label='Average portfolio value')
-    #     ax.fill_between(x, av_vals - confidence_interval, av_vals + confidence_interval,
-    #                     color='orange', alpha=0.2, label='95% confidence interval')
-    #     ax.legend()
-    #     if saveas is not None:
-    #         plt.savefig(saveas)
-    #         plt.close()
-    #     else:
-    #         plt.show()
     
     def update(self):
         """Copy the weights of the Q network over to the target network"""
@@ -183,8 +151,6 @@ class ReplayBuffer():
 
         self.buffer = []
         self.buffer_size = buffer_size
-
-        # self.end_factor = 0
 
     def store_experience(self, env, agent, state):
         # Implement agent's policy to get an action for this state
@@ -206,10 +172,6 @@ class ReplayBuffer():
                 progbar.update(1)
                 if len(self.buffer) >= self.buffer_size:
                     break
-                # # If this episode is over or you hit random stopping point, reset
-                # # environment
-                # if done or np.random.random() < self.end_factor or len(self.buffer) >= self.buffer_size:
-                #     break
 
     def sample_buffer(self, batch_size=128):
         """Return a random sample from the buffer, without replacement"""
@@ -218,7 +180,6 @@ class ReplayBuffer():
 
     def update(self):
         self.replay_buffer = []
-        # self.end_factor *= 0.9
 
 class CustomCSVWriter():
     """Super simple callback for writing to CSV file"""
@@ -259,16 +220,13 @@ def train(outdir, num_epochs=100):
         log.update(epoch, eval_result)
         print(f'Epoch {epoch+1}/{num_epochs}: {eval_result}')
 
-        # Also plot evaluation results
-
-
         # Update agent and buffer
         replay_buffer.update()
         agent.update_epsilon()
         agent.update()
 
 if __name__ == '__main__':
-    outdir = 'DQN_TEST'
+    outdir = 'DQN_output'
     train(outdir)
 
     

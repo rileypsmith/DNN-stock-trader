@@ -1,6 +1,12 @@
 # DNN-stock-trader
 A comparison of LSTM vs Deep Q-learning for a simple stock trader, and an
-explanation of why data used is insufficient for accurate results.
+explanation of why data used is insufficient for accurate results. The point of
+the analysis that follows is to explore how vanilla LSTM networks and LSTM-based
+reinforcement learning may be used for intelligent sequence modeling and to
+explore the different ways these methods lend to setting up and solving a
+simple problem like stock trading. Ultimately this analysis will not produce a
+protifable stock trader and I discourage anyone from using these results as the
+basis for actual stock trading.
 
 ## LSTM Networks
 LSTM (long short-term memory) networks are a popular framework of recurrent
@@ -183,3 +189,80 @@ the risk would be very high.
 
 Again we are faced with the same conclusion: historical prices alone are not
 sufficient data to build an accurate model for future asset price forecasting.
+
+## Deep Q-learning
+So LSTM networks are not well equipped for this task, at least not gien the
+quickly scraped data. How did the RL agent fare?
+
+If you guessed not well, you are correct. Unsurprisingly, the reinforcement
+learning agent is just as handicapped by data limitations as the vanilla LSTMs.
+After training for 128,000 decision steps, the RL agent has not converged to any
+consistent level of trading performance. 
+
+Let's take a look at just what it learns. Below is a plot of the portfolio value
+of the RL agent over a 30-day trading period from a starting value of $10.
+This is the average result of 100 trials (i.e. the agent is given 100 random
+sets of data from the holdout stocks and allowed to trade for 30 days, and the
+results are averaged).
+
+Here is that result from epoch 1 of training, after 1,280 decision steps:
+
+![RL epoch 1](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/deep_Q_learning/EPOCH000.png)
+
+This doesn't appear to be moving at all. So what's happening here? Well, early
+in training, the network is mostly randomly making decisions due to a high rate
+of exploration forced on the agent through an epsilon-greedy policy. A parameter
+"epsilon" controls how often the agent takes the decision it thinks is best vs
+how often it takes a random action. This value starts high in training. Over the
+course of training, it is steadily decreased (but never to 0, so some exploration
+is always taking place). As a result, early outcomes are totally unpredictable
+and the agent seems to learn to take no action in the early stages of training.
+
+Here is the result after 10 epochs of training (12,800 decision steps):
+
+![RL epoch 10](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/deep_Q_learning/EPOCH010.png)
+
+Now we see that the agent is choosing to sometimes trade a stock, though 
+interestingly it never makes a trade in the first 10 days of the 30-day trading
+period. Uncertainty is high, and although on average the agent gains 1% over the
+30-day trading window, the 95% confidence interval on its performance spans from
+-4% to +4%.
+
+Did it improve by the end of training? Not really. Here is the final result,
+after training for 100 epochs (128,000 decision steps):
+
+![RL epoch 100](https://github.com/rileypsmith/DNN-stock-trader/blob/main/plots/deep_Q_learning/EPOCH099.png)
+
+The agent still never likes to trade in the first few days (it is not immediately
+clear why). This time, the agent actually loses money on average, ending down about
+0.1% on average, a small amount but still not a good result. The only "improvement"
+over the result from 10 epochs of training is that the error bars are slightly
+narrower, but it can't be concluded that this is as a result of training for
+longer and not just a result of the configuration of weights that existed at the
+instance that training was stopped.
+
+The bottom line of the reinforcement learning approach is the same as the main
+takeaway from the LSTM approach: better data is needed to achieve practical
+results.
+
+# Discussion and Future Analysis
+This analysis has been intended to explore two different ways to implement
+sequence-modeling with neural networks: standard LSTMs and LSTM-based reinforcement
+learning agents with deep-Q learning. The code contained in this repository
+can be informative as a simple starting point for setting up these kinds of
+networks, but the results are not practical. Since the focus of this analysis
+was not to build an actually profitable trading bot, more emphasis was placed
+on the training setup of the neural networks and less was placed on data
+acquisition. In fact, the problem of developing a neural network capable of
+profiting in the stock market is widely studied and elusive; any attempt to
+actually accomplish this would certainly require a much richer dataset than
+that which can be readily scraped from Yahoo Finance. 
+
+In short, both approaches used in this analysis suffer from data limitations.
+This analysis has not reached the predictive limitations of LSTM networks or
+the design limitations of reinforcement learning problems, but better results
+can likely only be achieved with better data.
+
+
+
+
